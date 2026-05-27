@@ -30,6 +30,90 @@ app.add_middleware(
 # Tipos de imágenes permitidos
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
+# Diccionario de traducción de clases COCO (inglés a español)
+COCO_SPANISH = {
+    "person": "persona",
+    "bicycle": "bicicleta",
+    "car": "carro/auto",
+    "motorcycle": "motocicleta",
+    "airplane": "avión",
+    "bus": "autobús",
+    "train": "tren",
+    "truck": "camión",
+    "boat": "barco",
+    "traffic light": "semáforo",
+    "fire hydrant": "hidrante de incendios",
+    "stop sign": "señal de pare",
+    "parking meter": "parquímetro",
+    "bench": "banca",
+    "bird": "pájaro",
+    "cat": "gato",
+    "dog": "perro",
+    "horse": "caballo",
+    "sheep": "oveja",
+    "cow": "vaca",
+    "elephant": "elefante",
+    "bear": "oso",
+    "zebra": "cebra",
+    "giraffe": "jirafa",
+    "backpack": "mochila",
+    "umbrella": "paraguas",
+    "handbag": "cartera/bolso",
+    "tie": "corbata",
+    "suitcase": "maleta",
+    "frisbee": "disco volador",
+    "skis": "esquís",
+    "snowboard": "tabla de nieve",
+    "sports ball": "balón deportivo",
+    "kite": "cometa/papalote",
+    "baseball bat": "bate de béisbol",
+    "baseball glove": "guante de béisbol",
+    "skateboard": "patineta",
+    "surfboard": "tabla de surf",
+    "tennis racket": "raqueta de tenis",
+    "bottle": "botella",
+    "wine glass": "copa de vino",
+    "cup": "taza/vaso",
+    "fork": "tenedor",
+    "knife": "cuchillo",
+    "spoon": "cuchara",
+    "bowl": "tazón/plato hondo",
+    "banana": "plátano/banano",
+    "apple": "manzana",
+    "sandwich": "sándwich",
+    "orange": "naranja",
+    "broccoli": "brócoli",
+    "carrot": "zanahoria",
+    "hot dog": "perro caliente/pancho",
+    "pizza": "pizza",
+    "donut": "dona",
+    "cake": "pastel/torta",
+    "chair": "silla",
+    "couch": "sofá",
+    "potted plant": "planta en maceta",
+    "bed": "cama",
+    "dining table": "mesa de comedor",
+    "toilet": "inodoro/taza de baño",
+    "tv": "televisor",
+    "laptop": "computadora portátil",
+    "mouse": "mouse/ratón",
+    "remote": "control remoto",
+    "keyboard": "teclado",
+    "cell phone": "teléfono celular",
+    "microwave": "microondas",
+    "oven": "horno",
+    "toaster": "tostadora",
+    "sink": "fregadero/lavabo",
+    "refrigerator": "refrigerador",
+    "book": "libro",
+    "clock": "reloj",
+    "vase": "florero/jarrón",
+    "scissors": "tijeras",
+    "teddy bear": "oso de peluche",
+    "hair drier": "secador de pelo",
+    "toothbrush": "cepillo de dientes"
+}
+
 # Carga diferida de YOLO (Ultralytics) con manejo de fallos para entornos con recursos limitados (Render Free)
 YOLO_MODEL = None
 try:
@@ -137,12 +221,14 @@ async def analizar_imagen(file: UploadFile = File(...)):
                 boxes = r.boxes
                 for box in boxes:
                     class_id = int(box.cls[0])
-                    label = YOLO_MODEL.names[class_id]
+                    label_en = YOLO_MODEL.names[class_id]
+                    # Traducir etiqueta a español si está disponible
+                    label_es = COCO_SPANISH.get(label_en, label_en)
                     confidence = float(box.conf[0])
                     coords = box.xyxy[0].tolist()  # [xmin, ymin, xmax, ymax] en tamaño redimensionado
                     
                     predictions.append({
-                        "label": label,
+                        "label": label_es,
                         "confidence": round(confidence, 3),
                         "bounding_box": {
                             "xmin": int(coords[0] * scale_x),
@@ -151,7 +237,7 @@ async def analizar_imagen(file: UploadFile = File(...)):
                             "ymax": int(coords[3] * scale_y)
                         }
                     })
-                    detected_labels.append(f"{label} ({int(confidence * 100)}%)")
+                    detected_labels.append(f"{label_es} ({int(confidence * 100)}%)")
 
             # Formateamos una respuesta de texto simple para fácil parseo
             if detected_labels:
