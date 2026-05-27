@@ -119,8 +119,8 @@ async def analizar_imagen(file: UploadFile = File(...)):
         if GEMINI_ACTIVE:
             print("[LOG RENDER] Enviando imagen a Gemini...")
             
-            # Usamos gemini-1.5-flash que es rápido y optimizado para visión
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            # Usamos gemini-2.5-flash que es rápido y optimizado para visión
+            model = genai.GenerativeModel("gemini-2.5-flash")
             
             prompt = (
                 "Describe de forma muy concisa en español (máximo 1 o 2 oraciones sencillas) "
