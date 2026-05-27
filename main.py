@@ -27,6 +27,15 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 # Carga diferida de YOLO (Ultralytics) con manejo de fallos para entornos con recursos limitados (Render Free)
 YOLO_MODEL = None
 try:
+    # Soporte para PyTorch 2.6+ (donde weights_only=True es el valor predeterminado)
+    import torch
+    from ultralytics.nn.tasks import DetectionModel
+    torch.serialization.add_safe_globals([DetectionModel])
+    print("[INIT] Clases de Ultralytics añadidas a los safe globals de PyTorch.")
+except Exception as e:
+    print(f"[INIT] No se pudo configurar safe_globals en PyTorch ({e}). Se intentará cargar de forma estándar.")
+
+try:
     from ultralytics import YOLO
     # Cargamos el modelo YOLOv8n (Nano), que es ligero (~6MB) y consume menos RAM
     YOLO_MODEL = YOLO("yolov8n.pt")
