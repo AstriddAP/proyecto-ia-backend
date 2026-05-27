@@ -53,6 +53,20 @@ async def root():
     }
 
 
+@app.get("/modelos/", tags=["General"])
+async def list_models():
+    """
+    Endpoint temporal de depuración para listar los modelos de Gemini disponibles para esta API Key.
+    """
+    if not GEMINI_ACTIVE:
+        return {"status": "inactive", "error": "Gemini no está configurado (falta GEMINI_API_KEY)."}
+    try:
+        models = [m.name for m in genai.list_models()]
+        return {"status": "active", "models": models}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @app.post(
     "/analizar-imagen/", 
     status_code=status.HTTP_200_OK,
