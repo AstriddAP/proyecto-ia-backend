@@ -1,4 +1,5 @@
 import os
+import gc
 # Desactivar restricción estricta de weights_only en PyTorch 2.6+ (para evitar problemas de des-serialización de YOLOv8)
 # Solo se cargan pesos de confianza descargados directamente de la web oficial de Ultralytics.
 os.environ["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
@@ -103,17 +104,34 @@ async def analizar_imagen(file: UploadFile = File(...)):
                 detail="Error al procesar la imagen: los datos están corruptos o el formato no es válido."
             )
 
-        print(f"[LOG RENDER] Imagen decodificada con éxito. Dimensiones: {image.shape[1]}x{image.shape[0]} (WxH)")
+        original_height, original_width = image.shape[:2]
+        print(f"[LOG RENDER] Imagen decodificada con éxito. Dimensiones originales: {original_width}x{original_height} (WxH)")
+
+        # Redimensionamos la imagen para ahorrar memoria RAM y acelerar la inferencia en CPU (Render Free tiene límite de 512MB)
+        # Nota: YOLO trabaja a 640px por defecto, por lo que procesar imágenes grandes en CPU consume RAM innecesariamente.
+        max_dimension = 640
+        if max(original_height, original_width) > max_dimension:
+            scale = max_dimension / max(original_height, original_width)
+            new_width = int(original_width * scale)
+            new_height = int(original_height * scale)
+            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            print(f"[LOG RENDER] Imagen redimensionada para ahorro de RAM a: {new_width}x{new_height} (WxH)")
+        else:
+            new_width, new_height = original_width, original_height
 
         # 5. Detección con IA Real (YOLO) o Simulación Robusta
         if YOLO_MODEL is not None:
             print("[LOG RENDER] Procesando imagen con modelo YOLOv8n...")
             
-            # Ejecutamos la predicción en la imagen OpenCV decodificada
+            # Ejecutamos la predicción en la imagen OpenCV redimensionada
             results = YOLO_MODEL(image)
             
             predictions = []
             detected_labels = []
+
+            # Factores de escala para regresar las coordenadas al tamaño original de la foto
+            scale_x = original_width / new_width
+            scale_y = original_height / new_height
 
             for r in results:
                 boxes = r.boxes
@@ -121,16 +139,16 @@ async def analizar_imagen(file: UploadFile = File(...)):
                     class_id = int(box.cls[0])
                     label = YOLO_MODEL.names[class_id]
                     confidence = float(box.conf[0])
-                    coords = box.xyxy[0].tolist()  # [xmin, ymin, xmax, ymax]
+                    coords = box.xyxy[0].tolist()  # [xmin, ymin, xmax, ymax] en tamaño redimensionado
                     
                     predictions.append({
                         "label": label,
                         "confidence": round(confidence, 3),
                         "bounding_box": {
-                            "xmin": int(coords[0]),
-                            "ymin": int(coords[1]),
-                            "xmax": int(coords[2]),
-                            "ymax": int(coords[3])
+                            "xmin": int(coords[0] * scale_x),
+                            "ymin": int(coords[1] * scale_y),
+                            "xmax": int(coords[2] * scale_x),
+                            "ymax": int(coords[3] * scale_y)
                         }
                     })
                     detected_labels.append(f"{label} ({int(confidence * 100)}%)")
@@ -143,6 +161,11 @@ async def analizar_imagen(file: UploadFile = File(...)):
 
             processing_time = round(time.time() - start_time, 3)
             print(f"[LOG RENDER] Análisis completado con éxito en {processing_time} segundos.")
+
+            # Liberamos memoria
+            del image
+            del results
+            gc.collect()
 
             return {
                 "status": "success",
@@ -159,6 +182,10 @@ async def analizar_imagen(file: UploadFile = File(...)):
             processing_time = round(time.time() - start_time, 3)
             print(f"[LOG RENDER] Simulación finalizada en {processing_time} segundos.")
             
+            # Liberamos memoria
+            del image
+            gc.collect()
+
             # Formato JSON estructurado simple y estándar que previene excepciones en Android
             return {
                 "status": "success",
