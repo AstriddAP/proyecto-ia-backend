@@ -14,8 +14,6 @@ WORKDIR /app
 # (Útil si en el futuro decides añadir OpenCV, Pillow u otras herramientas de IA)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libgl1 \
-    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copia e instala las dependencias de Python primero para aprovechar la caché de Docker
