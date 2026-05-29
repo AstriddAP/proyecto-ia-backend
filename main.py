@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import io
 import google.generativeai as genai
+import pypdf
 
 # Inicialización de la aplicación FastAPI
 app = FastAPI(
@@ -173,4 +174,212 @@ async def analizar_imagen(file: UploadFile = File(...)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en el servidor al procesar la imagen: {str(e)}"
+        )
+
+
+@app.post(
+    "/resumir-texto/",
+    status_code=status.HTTP_200_OK,
+    tags=["Resumen de IA"],
+    summary="Resume un texto largo usando Google Gemini."
+)
+async def resumir_texto(data: dict):
+    """
+    Recibe un JSON con la clave 'texto' (o 'text') y devuelve un resumen conciso en español.
+    """
+    text = data.get("texto") or data.get("text")
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se proporcionó ningún texto para resumir. Debe incluir la clave 'texto' o 'text'."
+        )
+
+    print(f"\n[LOG RENDER] >>> Solicitud de resumen de texto recibida!")
+    print(f"[LOG RENDER] Longitud del texto: {len(text)} caracteres.")
+
+    start_time = time.time()
+
+    try:
+        if GEMINI_ACTIVE:
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            prompt = (
+                "Resume de forma clara, natural y concisa el siguiente texto en español, "
+                "en un párrafo corto de máximo 3 o 4 oraciones. "
+                "Este resumen será leído en voz alta, por lo que debe ser fluido y directo:\n\n"
+                f"{text}"
+            )
+            response = model.generate_content(prompt)
+            summary = response.text.strip()
+
+            processing_time = round(time.time() - start_time, 3)
+            print(f"[LOG RENDER] Resumen de texto completado en {processing_time} segundos.")
+
+            return {
+                "status": "success",
+                "resumen": summary,
+                "processing_time": processing_time
+            }
+        else:
+            print("[LOG RENDER] Ejecutando simulación de IA para resumen de texto...")
+            time.sleep(0.5)
+            processing_time = round(time.time() - start_time, 3)
+            return {
+                "status": "success",
+                "resumen": "Este es un resumen simulado de texto. La API de Gemini no está configurada, por lo que el servidor funciona en modo de prueba local.",
+                "processing_time": processing_time
+            }
+    except Exception as e:
+        print(f"[LOG RENDER] Error interno en /resumir-texto/: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno al resumir el texto: {str(e)}"
+        )
+
+
+@app.post(
+    "/resumir-archivo/",
+    status_code=status.HTTP_200_OK,
+    tags=["Resumen de IA"],
+    summary="Resume un archivo (Imagen, PDF o Texto) usando Google Gemini."
+)
+async def resumir_archivo(file: UploadFile = File(...)):
+    """
+    Recibe un archivo (Imagen, TXT o PDF) y devuelve un resumen conciso en español.
+    """
+    if not file:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se ha proporcionado ningún archivo."
+        )
+
+    print(f"\n[LOG RENDER] >>> Solicitud de resumen de archivo recibida!")
+    print(f"[LOG RENDER] Nombre del archivo: {file.filename}")
+    print(f"[LOG RENDER] Tipo MIME: {file.content_type}")
+
+    start_time = time.time()
+    file_bytes = await file.read()
+
+    # Identificar el tipo de archivo y extraer su contenido para Gemini
+    content_type = file.content_type
+    filename_lower = file.filename.lower()
+
+    is_image = content_type in ALLOWED_IMAGE_TYPES or filename_lower.endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif'))
+    is_pdf = content_type == "application/pdf" or filename_lower.endswith('.pdf')
+    is_txt = content_type.startswith("text/") or filename_lower.endswith(('.txt', '.csv', '.md', '.json'))
+
+    try:
+        if is_image:
+            print("[LOG RENDER] Procesando archivo como imagen...")
+            try:
+                pil_image = Image.open(io.BytesIO(file_bytes))
+                if pil_image.mode in ('RGBA', 'LA'):
+                    pil_image = pil_image.convert('RGB')
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Error al decodificar la imagen: {str(e)}"
+                )
+
+            if GEMINI_ACTIVE:
+                model = genai.GenerativeModel("gemini-2.5-flash")
+                prompt = (
+                    "Describe y resume de forma clara y concisa en español (en un párrafo corto de "
+                    "máximo 3 o 4 oraciones) lo que ves en esta imagen. Esta descripción se leerá en "
+                    "voz alta, por lo que debe ser fluida, natural y directa."
+                )
+                response = model.generate_content([prompt, pil_image])
+                summary = response.text.strip()
+                
+                # Liberar memoria
+                del pil_image
+                gc.collect()
+            else:
+                summary = "Esta es una descripción simulada de la imagen. Gemini no está configurado."
+
+        elif is_pdf:
+            print("[LOG RENDER] Procesando archivo como PDF...")
+            extracted_text = ""
+            try:
+                pdf_reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+                for page in pdf_reader.pages:
+                    text = page.extract_text()
+                    if text:
+                        extracted_text += text + "\n"
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Error al leer el archivo PDF: {str(e)}"
+                )
+
+            if not extracted_text.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El archivo PDF no contiene texto legible (podría estar escaneado sin OCR o vacío)."
+                )
+
+            print(f"[LOG RENDER] Texto extraído del PDF con éxito. Longitud: {len(extracted_text)} caracteres.")
+
+            if GEMINI_ACTIVE:
+                model = genai.GenerativeModel("gemini-2.5-flash")
+                prompt = (
+                    "Resume de forma clara, natural y concisa el contenido extraído del siguiente archivo PDF "
+                    "en español, en un párrafo corto de máximo 4 oraciones. El resumen será leído en voz alta:\n\n"
+                    f"{extracted_text}"
+                )
+                response = model.generate_content(prompt)
+                summary = response.text.strip()
+            else:
+                summary = f"Este es un resumen simulado del PDF con texto extraído (longitud: {len(extracted_text)} caracteres). Gemini no está activo."
+
+        elif is_txt:
+            print("[LOG RENDER] Procesando archivo como texto plano...")
+            try:
+                file_text = file_bytes.decode("utf-8", errors="ignore")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Error al decodificar el archivo de texto: {str(e)}"
+                )
+
+            if not file_text.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El archivo de texto está vacío."
+                )
+
+            if GEMINI_ACTIVE:
+                model = genai.GenerativeModel("gemini-2.5-flash")
+                prompt = (
+                    "Resume de forma clara, natural y concisa el siguiente texto del archivo en español, "
+                    "en un párrafo corto de máximo 4 oraciones. El resumen será leído en voz alta:\n\n"
+                    f"{file_text}"
+                )
+                response = model.generate_content(prompt)
+                summary = response.text.strip()
+            else:
+                summary = f"Este es un resumen simulado del archivo de texto (longitud: {len(file_text)} caracteres). Gemini no está activo."
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Formato de archivo no soportado. Tipo MIME: {content_type}. Solo se aceptan imágenes, PDFs y archivos de texto plano."
+            )
+
+        processing_time = round(time.time() - start_time, 3)
+        print(f"[LOG RENDER] Resumen de archivo completado en {processing_time} segundos.")
+
+        return {
+            "status": "success",
+            "resumen": summary,
+            "filename": file.filename,
+            "processing_time": processing_time
+        }
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"[LOG RENDER] Error crítico en /resumir-archivo/: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor al procesar el archivo: {str(e)}"
         )
