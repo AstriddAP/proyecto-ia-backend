@@ -74,71 +74,102 @@ async def list_models():
         return {"status": "error", "error": str(e)}
 
 
-from fastapi import Request
+import urllib.request
+import urllib.parse
+import json
+
+# Caché en memoria para evitar saturar la API de Giphy y mejorar el rendimiento
+GIPHY_CACHE = {}
+
+def get_giphy_gif(word: str) -> str:
+    # Si la seña ya está en el caché, la devolvemos inmediatamente
+    if word in GIPHY_CACHE:
+        return GIPHY_CACHE[word]
+        
+    api_key = "dc6zaTOxFJmzC"  # Public beta key
+    
+    # 1. Intentar buscar en español: "lengua de señas {palabra}"
+    query = urllib.parse.quote(f"lengua de señas {word}")
+    url = f"https://api.giphy.com/v1/gifs/search?api_key={api_key}&q={query}&limit=1"
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=4) as response:
+            data = json.loads(response.read().decode())
+            gifs = data.get("data", [])
+            if gifs:
+                gif_url = gifs[0]["images"]["original"]["url"]
+                # Convertir a https si viene como http para evitar problemas de Mixed Content en Android
+                if gif_url.startswith("http://"):
+                    gif_url = "https://" + gif_url[7:]
+                GIPHY_CACHE[word] = gif_url
+                return gif_url
+    except Exception as e:
+        print(f"[GIPHY] Error buscando en español para '{word}': {e}")
+
+    # 2. Si no encuentra, intentar buscar en inglés: "sign language {palabra}"
+    # Mapeamos algunas palabras comunes para mejorar resultados en inglés
+    translations = {
+        "Hola": "hello",
+        "Gracias": "thank you",
+        "Por favor": "please",
+        "Emergencia": "emergency",
+        "Amigo": "friend",
+        "Buenos días": "good morning",
+        "Te quiero": "i love you",
+        "Sí": "yes",
+        "No": "no"
+    }
+    english_word = translations.get(word, word)
+    query = urllib.parse.quote(f"sign language {english_word}")
+    url = f"https://api.giphy.com/v1/gifs/search?api_key={api_key}&q={query}&limit=1"
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=4) as response:
+            data = json.loads(response.read().decode())
+            gifs = data.get("data", [])
+            if gifs:
+                gif_url = gifs[0]["images"]["original"]["url"]
+                if gif_url.startswith("http://"):
+                    gif_url = "https://" + gif_url[7:]
+                GIPHY_CACHE[word] = gif_url
+                return gif_url
+    except Exception as e:
+        print(f"[GIPHY] Error buscando en inglés para '{word}': {e}")
+
+    # 3. Si no encuentra nada, retornamos un GIF por defecto (Homer Simpson)
+    default_gif = "https://media.giphy.com/media/3o7TKVUn7iM8FMEU24/giphy.gif"
+    GIPHY_CACHE[word] = default_gif
+    return default_gif
+
 
 @app.get(
     "/diccionario/",
     tags=["Diccionario"],
-    summary="Obtiene la lista de señas del diccionario con sus URLs locales o de Render."
+    summary="Obtiene la lista de señas del diccionario con URLs dinámicas desde Giphy."
 )
-async def get_diccionario(request: Request):
-    base_url = str(request.base_url).rstrip("/")
-    return [
-        {
-            "id": 1,
-            "word": "Hola",
-            "gifUrl": f"{base_url}/static/hola.gif",
-            "category": "Saludos"
-        },
-        {
-            "id": 2,
-            "word": "Gracias",
-            "gifUrl": f"{base_url}/static/gracias.gif",
-            "category": "Cortés"
-        },
-        {
-            "id": 3,
-            "word": "Por favor",
-            "gifUrl": f"{base_url}/static/por_favor.gif",
-            "category": "Cortés"
-        },
-        {
-            "id": 4,
-            "word": "Emergencia",
-            "gifUrl": f"{base_url}/static/emergencia.gif",
-            "category": "General"
-        },
-        {
-            "id": 5,
-            "word": "Amigo",
-            "gifUrl": f"{base_url}/static/amigo.gif",
-            "category": "Social"
-        },
-        {
-            "id": 6,
-            "word": "Buenos días",
-            "gifUrl": f"{base_url}/static/buenos_dias.gif",
-            "category": "Saludos"
-        },
-        {
-            "id": 7,
-            "word": "Te quiero",
-            "gifUrl": f"{base_url}/static/te_quiero.gif",
-            "category": "Emociones"
-        },
-        {
-            "id": 8,
-            "word": "Sí",
-            "gifUrl": f"{base_url}/static/si.gif",
-            "category": "General"
-        },
-        {
-            "id": 9,
-            "word": "No",
-            "gifUrl": f"{base_url}/static/no.gif",
-            "category": "General"
-        }
+async def get_diccionario():
+    palabras = [
+        {"id": 1, "word": "Hola", "category": "Saludos"},
+        {"id": 2, "word": "Gracias", "category": "Cortés"},
+        {"id": 3, "word": "Por favor", "category": "Cortés"},
+        {"id": 4, "word": "Emergencia", "category": "General"},
+        {"id": 5, "word": "Amigo", "category": "Social"},
+        {"id": 6, "word": "Buenos días", "category": "Saludos"},
+        {"id": 7, "word": "Te quiero", "category": "Emociones"},
+        {"id": 8, "word": "Sí", "category": "General"},
+        {"id": 9, "word": "No", "category": "General"}
     ]
+    
+    result = []
+    for p in palabras:
+        gif_url = get_giphy_gif(p["word"])
+        result.append({
+            "id": p["id"],
+            "word": p["word"],
+            "gifUrl": gif_url,
+            "category": p["category"]
+        })
+    return result
 
 
 @app.post(
