@@ -24,6 +24,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.staticfiles import StaticFiles
+
+# Crear el directorio static si no existe
+os.makedirs("static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Tipos de imágenes permitidos
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
@@ -66,6 +72,73 @@ async def list_models():
         return {"status": "active", "models": models}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+from fastapi import Request
+
+@app.get(
+    "/diccionario/",
+    tags=["Diccionario"],
+    summary="Obtiene la lista de señas del diccionario con sus URLs locales o de Render."
+)
+async def get_diccionario(request: Request):
+    base_url = str(request.base_url).rstrip("/")
+    return [
+        {
+            "id": 1,
+            "word": "Hola",
+            "gifUrl": f"{base_url}/static/hola.gif",
+            "category": "Saludos"
+        },
+        {
+            "id": 2,
+            "word": "Gracias",
+            "gifUrl": f"{base_url}/static/gracias.gif",
+            "category": "Cortés"
+        },
+        {
+            "id": 3,
+            "word": "Por favor",
+            "gifUrl": f"{base_url}/static/por_favor.gif",
+            "category": "Cortés"
+        },
+        {
+            "id": 4,
+            "word": "Emergencia",
+            "gifUrl": f"{base_url}/static/emergencia.gif",
+            "category": "General"
+        },
+        {
+            "id": 5,
+            "word": "Amigo",
+            "gifUrl": f"{base_url}/static/amigo.gif",
+            "category": "Social"
+        },
+        {
+            "id": 6,
+            "word": "Buenos días",
+            "gifUrl": f"{base_url}/static/buenos_dias.gif",
+            "category": "Saludos"
+        },
+        {
+            "id": 7,
+            "word": "Te quiero",
+            "gifUrl": f"{base_url}/static/te_quiero.gif",
+            "category": "Emociones"
+        },
+        {
+            "id": 8,
+            "word": "Sí",
+            "gifUrl": f"{base_url}/static/si.gif",
+            "category": "General"
+        },
+        {
+            "id": 9,
+            "word": "No",
+            "gifUrl": f"{base_url}/static/no.gif",
+            "category": "General"
+        }
+    ]
 
 
 @app.post(
